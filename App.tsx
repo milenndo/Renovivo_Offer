@@ -2,14 +2,15 @@ import React, { useState, useEffect } from 'react';
 import { ProjectForm } from './components/ProjectForm';
 import { OfferDisplay } from './components/OfferDisplay';
 import { HistoryList } from './components/HistoryList';
+import { Inbox } from './components/Inbox';
 import { ProjectData, HistoryItem } from './types';
 import { generateRenovationOffer, calculateEstimates } from './services/geminiService';
-import { Hammer, Sparkles, LayoutList, PlusCircle } from 'lucide-react';
+import { Hammer, Sparkles, LayoutList, PlusCircle, Inbox as InboxIcon } from 'lucide-react';
 
 const STORAGE_KEY = 'renovivo_history';
 
 const App: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'new' | 'history'>('new');
+  const [activeTab, setActiveTab] = useState<'new' | 'history' | 'inbox'>('new');
   const [viewState, setViewState] = useState<'input' | 'result'>('input');
   
   const [offerContent, setOfferContent] = useState<string>('');
@@ -39,6 +40,7 @@ const App: React.FC = () => {
       projectData: data,
       offerText: text,
       priceRange: estimates.totalRange,
+      status: 'SENT' // Default status
     };
 
     const updatedHistory = [newItem, ...history];
@@ -67,13 +69,9 @@ const App: React.FC = () => {
     setCurrentProjectData(item.projectData);
     setOfferContent(item.offerText);
     
-    // Determine where to go? Let's go to input form with pre-filled data
-    // Or if they want to see the text immediately, we could go to result.
-    // The requirement says "pre-fill details", so going to input form.
-    
+    // Determine where to go? Let's go to input form with pre-filled details
     setActiveTab('new');
     setViewState('input');
-    // We pass currentProjectData down to Form as initialData
   };
 
   return (
@@ -84,7 +82,7 @@ const App: React.FC = () => {
             <div className="bg-black text-white p-1.5 rounded-md">
                 <Hammer className="w-5 h-5" />
             </div>
-            <span className="font-semibold text-lg tracking-tight">Renovivo AI</span>
+                        <img src="/RENOVIVO_black.png" alt="Renovivo" style={{height: "40px"}} />
           </div>
           
           {/* Tabs */}
@@ -103,27 +101,47 @@ const App: React.FC = () => {
                 <LayoutList className="w-4 h-4" />
                 История
              </button>
+             <button 
+                onClick={() => { setActiveTab('inbox'); setViewState('input'); }}
+                className={`flex items-center gap-2 px-4 py-1.5 rounded-md text-sm font-medium transition-all ${activeTab === 'inbox' ? 'bg-white shadow-sm text-zinc-900' : 'text-zinc-500 hover:text-zinc-900'}`}
+             >
+                <InboxIcon className="w-4 h-4" />
+                Inbox
+                <span className="bg-red-500 text-white text-[10px] px-1.5 rounded-full">1</span>
+             </button>
           </div>
         </div>
       </header>
 
       <main className="pt-28 pb-20 px-4 md:px-6">
-        <div className="max-w-3xl mx-auto">
+        <div className="max-w-4xl mx-auto">
           {error && (
             <div className="bg-red-50 text-red-600 px-4 py-3 rounded-lg mb-6 text-sm border border-red-100">
               {error}
             </div>
           )}
 
-          {activeTab === 'history' ? (
+          {activeTab === 'history' && (
              <div className="animate-fade-in">
                 <h1 className="text-3xl font-bold tracking-tight mb-8 text-zinc-900">История на офертите</h1>
                 <HistoryList items={history} onLoad={handleLoadHistory} />
              </div>
-          ) : (
+          )}
+
+          {activeTab === 'inbox' && (
+            <div className="animate-fade-in">
+               <div className="mb-8">
+                    <h1 className="text-3xl font-bold tracking-tight text-zinc-900">Multi-Channel Inbox</h1>
+                    <p className="text-zinc-500 mt-2">Централизирана комуникация (Email, WhatsApp, SMS)</p>
+               </div>
+               <Inbox />
+            </div>
+          )}
+
+          {activeTab === 'new' && (
             <>
               {viewState === 'input' ? (
-                <div className="animate-fade-in">
+                <div className="animate-fade-in max-w-3xl mx-auto">
                     <div className="mb-10 text-center">
                         <h1 className="text-4xl font-bold tracking-tight mb-4 text-zinc-900">Създайте нова оферта</h1>
                         <p className="text-zinc-500 text-lg max-w-lg mx-auto">

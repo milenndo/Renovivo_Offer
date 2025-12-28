@@ -1,29 +1,37 @@
-import { GoogleGenAI } from "@google/genai";
-import { ProjectData, RenovationLevel } from "../types";
+import { GoogleGenAI, Type } from "@google/genai";
+import { ProjectData, RenovationLevel, AnalyzedData, Zone } from "../types";
 
-// 1. Pricing Configuration (Internal Logic)
-// Prices are in BGN (Bŭlgarski lev)
-const PRICING_CONFIG = {
-  perSquareMeter: {
-    [RenovationLevel.STANDARD]: { min: 300, max: 500 },
-    [RenovationLevel.HIGH_END]: { min: 550, max: 850 },
-    [RenovationLevel.LUXURY]: { min: 900, max: 1400 },
-  },
-  bathroom: { min: 3500, max: 8000 }, // Average cost for labor + rough materials per bathroom
-  microcement: { min: 80, max: 150 }, // per m2
+// Helper to convert File to Base64
+export const fileToGenerativePart = async (file: File): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      const base64String = reader.result as string;
+      // Remove data url prefix (e.g. "data:image/jpeg;base64,")
+      const base64Data = base64String.split(',')[1];
+      resolve(base64Data);
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
 };
 
-// 2. Calculation Helper - Exported for use in App.tsx history saving
+// Helper to calculate exact prices based on selected services
 export const calculateEstimates = (data: ProjectData) => {
   const level = data.level || RenovationLevel.STANDARD;
   
-  // Select range based on level, fallback to Standard if undefined
-  const range = PRICING_CONFIG.perSquareMeter[level] || PRICING_CONFIG.perSquareMeter[RenovationLevel.STANDARD];
-  
-  const totalMin = data.totalArea * range.min;
-  const totalMax = data.totalArea * range.max;
+  // Calculate Grand Total from Selected Services
+  let markup = 0;
+  if (level === RenovationLevel.HIGH_END) markup = 0.20;
+  if (level === RenovationLevel.PREMIUM) markup = 0.30;
 
-  // Identify bathrooms for context
+  const totalBGN = data.selectedServices.reduce((sum, service) => {
+    const unitPrice = service.basePriceBGN * (1 + markup);
+    return sum + (unitPrice * service.quantity);
+  }, 0);
+
+  const totalEUR = totalBGN / 1.95583;
+
   const bathrooms = data.zones.filter(z => 
     z.name.toLowerCase().includes('баня') || 
     z.name.toLowerCase().includes('wc') || 
@@ -31,10 +39,11 @@ export const calculateEstimates = (data: ProjectData) => {
   );
   
   return {
-    totalRange: `${totalMin.toLocaleString('bg-BG')} - ${totalMax.toLocaleString('bg-BG')} лв.`,
-    pricePerSqm: `${range.min} - ${range.max} лв./м²`,
+    totalRange: `${totalBGN.toLocaleString('bg-BG', {maximumFractionDigits: 0})} лв. (без ДДС)`,
+    totalEUR: `€${totalEUR.toLocaleString('bg-BG', {maximumFractionDigits: 0})}`,
+    hasDetailedEstimate: data.selectedServices.length > 0,
+    servicesCount: data.selectedServices.length,
     bathroomsCount: bathrooms.length,
-    bathroomPrice: `${PRICING_CONFIG.bathroom.min} - ${PRICING_CONFIG.bathroom.max} лв.`
   };
 };
 
@@ -46,13 +55,13 @@ const SYSTEM_INSTRUCTION = `
 [Кратко, делово описание на проекта в 2 изречения]
 
 ## БЮДЖЕТНА РАМКА
-[Използвай подадените калкулации. Посочи, че цената е за труд и груби материали.]
+[Използвай ТОЧНО подадената сума от калкулацията. Посочи изрично, че е без ДДС и включва описаните услуги.]
 
-## ОБХВАТ НА ДЕЙНОСТИТЕ
-[Списък с тирета, групирани логично]
+## ДЕТАЙЛНА СПЕЦИФИКАЦИЯ
+[Изброй избраните услуги с техните количества и единични цени, форматирани като списък или кратка таблица]
 
 ## ИЗКЛЮЧЕНИЯ
-[Какво НЕ е включено: чистови настилки, мебели, уреди]
+[Какво НЕ е включено: чистови настилки, мебели, уреди, ДДС]
 
 ## СРОКОВЕ И ЕТАПИ
 [Ориентировъчен срок и стъпки: Оглед -> Договор -> Изпълнение]
@@ -71,21 +80,30 @@ export const generateRenovationOffer = async (data: ProjectData): Promise<string
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const estimates = calculateEstimates(data);
 
-  // Compact context for the AI
+  let markup = 0;
+  if (data.level === RenovationLevel.HIGH_END) markup = 0.20;
+  if (data.level === RenovationLevel.PREMIUM) markup = 0.30;
+
+  const servicesList = data.selectedServices.map(s => {
+    const price = s.basePriceBGN * (1 + markup);
+    return `- ${s.name}: ${s.quantity} ${s.unit} x ${price.toFixed(2)} лв.`;
+  }).join('\n');
+
   const prompt = `
 КЛИЕНТ: ${data.client.name}
 
 ПРОЕКТ:
-Тип: ${data.type}, ${data.totalArea}м2, ${data.location}
+Тип: ${data.type} ${data.yearOfConstruction ? `(Строителство: ${data.yearOfConstruction})` : ''}
+Площ: ${data.totalArea}м2, ${data.location}
 Зони: ${data.zones.map(z => `${z.name} (${z.area}м2)`).join(', ')}
-Дейности: ${data.activities.join(', ')}
 Ниво: ${data.level}
 Инфо: ${data.notes}
 
-КАЛКУЛАЦИЯ (ВКЛЮЧИ ТЕЗИ ЦИФРИ):
-Общо: ${estimates.totalRange}
-Цена/м2: ${estimates.pricePerSqm}
-Бани: ${estimates.bathroomsCount} бр. (~${estimates.bathroomPrice}/бр)
+ИЗБРАНИ УСЛУГИ И ЦЕНИ (ТОЗИ СПИСЪК Е ФИНАЛЕН):
+${servicesList}
+
+ФИНАЛНА КАЛКУЛАЦИЯ:
+Общо: ${estimates.totalRange} / ${estimates.totalEUR}
 `;
 
   try {
@@ -94,7 +112,7 @@ export const generateRenovationOffer = async (data: ProjectData): Promise<string
       contents: prompt,
       config: {
         systemInstruction: SYSTEM_INSTRUCTION,
-        temperature: 0.3, // Low temperature for high precision and consistent formatting
+        temperature: 0.2, 
       },
     });
 
@@ -102,5 +120,113 @@ export const generateRenovationOffer = async (data: ProjectData): Promise<string
   } catch (error) {
     console.error("Gemini API Error:", error);
     throw new Error("Възникна технически проблем. Моля, опитайте отново.");
+  }
+};
+
+// --- NEW: ANALYZE FILE ---
+export const analyzeProjectFile = async (file: File): Promise<AnalyzedData> => {
+  if (!process.env.API_KEY) throw new Error("API Key missing");
+
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const base64Data = await fileToGenerativePart(file);
+
+  const prompt = `
+    Analyze this image (floor plan, architectural drawing, or sketch).
+    Extract:
+    1. The total area (if mentioned or estimate based on rooms).
+    2. A list of rooms/zones with their approximate areas in square meters.
+    3. The likely property type (Apartment, House, Office).
+    
+    Return JSON only.
+  `;
+
+  try {
+    const response = await ai.models.generateContent({
+      model: 'gemini-3-pro-preview',
+      contents: {
+        parts: [
+          { inlineData: { mimeType: file.type, data: base64Data } },
+          { text: prompt }
+        ]
+      },
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            totalArea: { type: Type.NUMBER },
+            zones: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  name: { type: Type.STRING },
+                  area: { type: Type.NUMBER },
+                }
+              }
+            },
+            propertyTypeHint: { type: Type.STRING },
+            suggestion: { type: Type.STRING, description: "A brief observation about the layout" }
+          }
+        }
+      }
+    });
+
+    const result = JSON.parse(response.text || '{}');
+    
+    return {
+      totalArea: result.totalArea || 0,
+      zones: (result.zones || []).map((z: any, idx: number) => ({
+        id: `auto-${idx}`,
+        name: z.name || 'Помещение',
+        area: z.area || 0
+      })),
+      suggestion: result.suggestion || "Данни, извлечени от изображението."
+    };
+
+  } catch (error) {
+    console.error("Analysis Error:", error);
+    throw new Error("Неуспешен анализ на файла.");
+  }
+};
+
+// --- NEW: GENERATE 3D VISUALIZATION ---
+export const generateRoomVisualization = async (roomName: string, style: string = "Modern Minimalist"): Promise<string> => {
+  if (!process.env.API_KEY) throw new Error("API Key missing");
+
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+
+  const prompt = `
+    Photorealistic 3D architectural render of a ${roomName}.
+    Style: ${style}. 
+    High quality, interior design magazine look, 4k, renovations completed.
+    Neutral colors, warm lighting.
+  `;
+
+  try {
+    // Using generateContent with image-preview model to get the image
+    const response = await ai.models.generateContent({
+      model: 'gemini-3-pro-image-preview',
+      contents: {
+        parts: [{ text: prompt }]
+      },
+      config: {
+        imageConfig: {
+            aspectRatio: "16:9",
+            imageSize: "1K"
+        }
+      }
+    });
+
+    // Extract image
+    for (const part of response.candidates?.[0]?.content?.parts || []) {
+      if (part.inlineData) {
+        return `data:image/png;base64,${part.inlineData.data}`;
+      }
+    }
+    throw new Error("No image generated");
+  } catch (error) {
+    console.error("Vis Error:", error);
+    throw new Error("Неуспешно генериране на визуализация.");
   }
 };

@@ -1,5 +1,7 @@
 {
   "name": "Renovivo Offer Assistant",
   "description": "A minimalist, Apple-style offer generation tool for Renovivo, utilizing Google Gemini to craft professional renovation proposals.",
-  "requestFramePermissions": []
+  "requestFramePermissions": [
+    "camera"
+  ]
 }

@@ -1,14 +1,18 @@
 export enum PropertyType {
-  APARTMENT = 'Апартамент',
-  HOUSE = 'Къща',
+  APT_NEW = 'Апартамент (Ново строителство - шпакловка/замазка)',
+  APT_PANEL = 'Апартамент (Панел)',
+  APT_BRICK = 'Апартамент (Тухла - старо строителство)',
+  APT_EPK = 'Апартамент (ЕПК)',
+  HOUSE_NEW = 'Къща (Ново строителство)',
+  HOUSE_OLD = 'Къща (За основен ремонт)',
   OFFICE = 'Офис',
   COMMERCIAL = 'Търговски обект'
 }
 
 export enum RenovationLevel {
-  STANDARD = 'Стандарт',
-  HIGH_END = 'Висок клас',
-  LUXURY = 'Лукс / High-end'
+  STANDARD = 'Стандарт (Basic)',
+  HIGH_END = 'Висок клас (High-End)',
+  PREMIUM = 'Премиум (Luxury)'
 }
 
 export interface Zone {
@@ -23,16 +27,38 @@ export interface ClientInfo {
   phone: string;
 }
 
+// Database item structure
+export interface ServiceItem {
+  id: string;
+  name: string;
+  unit: string; // e.g., "м²", "бр.", "мл"
+  basePriceBGN: number; // Base price without VAT
+}
+
+// Selected item in the form
+export interface SelectedService extends ServiceItem {
+  quantity: number;
+  markupPercent: number; // 0, 20, or 30
+}
+
 export interface ProjectData {
   client: ClientInfo;
   type: PropertyType;
+  yearOfConstruction?: string; // Only for houses
   location: string;
   totalArea: number;
   zones: Zone[];
-  condition: string; // e.g., "Нужда от основен ремонт"
-  activities: string[];
+  condition: string;
+  selectedServices: SelectedService[]; // Replaces old 'activities'
   level: RenovationLevel;
   notes: string;
+}
+
+export interface AnalyzedData {
+  totalArea: number;
+  zones: Zone[];
+  type?: PropertyType;
+  suggestion: string;
 }
 
 export interface HistoryItem {
@@ -41,22 +67,36 @@ export interface HistoryItem {
   projectData: ProjectData;
   offerText: string;
   priceRange: string;
+  status?: OfferStatus;
 }
 
-export const COMMON_ACTIVITIES = [
-  "Къртене и извозване",
-  "Нови Ел. инсталации",
-  "Нови ВиК инсталации",
-  "Нови замазки",
-  "Гипсова шпакловка",
-  "Боядисване",
-  "Фаянс/Гранитогрес",
-  "Сух под / Ламинат",
-  "Окачени тавани",
-  "Монтаж на осветление",
-  "Монтаж на санитария",
-  "Интериорни врати"
-];
+export enum AgentType {
+  SALES = 'Sales',
+  PM = 'Project Manager',
+  COMM = 'Communication'
+}
+
+export enum CommunicationChannel {
+  EMAIL = 'Email',
+  SMS = 'SMS',
+  WHATSAPP = 'WhatsApp'
+}
+
+export type OfferStatus = 'DRAFT' | 'SENT' | 'SIGNED' | 'PAID';
+
+export interface InboxThread {
+  id: string;
+  clientName: string;
+  channel: CommunicationChannel;
+  preview: string;
+  timestamp: string;
+  unread: boolean;
+  messages: {
+    sender: 'client' | 'agent';
+    text: string;
+    time: string;
+  }[];
+}
 
 export const DEFAULT_ZONES: Zone[] = [
   { id: '1', name: 'Дневна', area: 24 },
