@@ -40,10 +40,24 @@ export const ProjectForm: React.FC<ProjectFormProps> = ({ onSubmit, isGenerating
   const [visModalOpen, setVisModalOpen] = useState(false);
   const [selectedRoomForVis, setSelectedRoomForVis] = useState<string>('');
 
-  // Load initial data
+  // Load initial data with migration for new fields (wallArea, ceilingArea, height)
   useEffect(() => {
     if (initialData) {
-      setData(initialData);
+      const migratedZones = initialData.zones.map(z => {
+        const h = z.height || 2.60;
+        const area = z.area || 0;
+        // Backfill calculation if missing
+        const calculatedPerimeter = 4 * Math.sqrt(area);
+        
+        return {
+          ...z,
+          height: h,
+          ceilingArea: z.ceilingArea || area,
+          wallArea: z.wallArea || parseFloat((calculatedPerimeter * h).toFixed(2))
+        };
+      });
+      
+      setData({ ...initialData, zones: migratedZones });
     }
   }, [initialData]);
 

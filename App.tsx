@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { ProjectForm } from './components/ProjectForm';
 import { OfferDisplay } from './components/OfferDisplay';
@@ -5,7 +6,7 @@ import { HistoryList } from './components/HistoryList';
 import { Inbox } from './components/Inbox';
 import { ProjectData, HistoryItem } from './types';
 import { generateRenovationOffer, calculateEstimates } from './services/geminiService';
-import { Hammer, Sparkles, LayoutList, PlusCircle, Inbox as InboxIcon } from 'lucide-react';
+import { Sparkles, LayoutList, PlusCircle, Inbox as InboxIcon } from 'lucide-react';
 
 const STORAGE_KEY = 'renovivo_history';
 
@@ -79,10 +80,7 @@ const App: React.FC = () => {
       <header className="fixed top-0 left-0 right-0 bg-white/80 backdrop-blur-md border-b border-zinc-200 z-50">
         <div className="max-w-5xl mx-auto px-6 h-16 flex items-center justify-between">
           <div className="flex items-center gap-2 cursor-pointer" onClick={() => { setActiveTab('new'); setViewState('input'); }}>
-            <div className="bg-black text-white p-1.5 rounded-md">
-                <Hammer className="w-5 h-5" />
-            </div>
-                        <img src="/RENOVIVO_black.png" alt="Renovivo" style={{height: "40px"}} />
+             <img src="/renovivo_logo.png" alt="Renovivo" className="h-9 w-auto object-contain" />
           </div>
           
           {/* Tabs */}

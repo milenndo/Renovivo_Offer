@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { ArrowLeft, Copy, CheckCircle, Download, Loader2, PenTool, CreditCard, Check, ZoomIn, ZoomOut } from 'lucide-react';
 import { ProjectData, OfferStatus } from '../types';
@@ -219,11 +220,7 @@ export const OfferDisplay: React.FC<OfferDisplayProps> = ({ content, projectData
                     {/* 1. Header */}
                     <div className="flex justify-between items-center mb-12 border-b border-zinc-100 pb-8">
                         <div className="flex items-center gap-4">
-                            <div className="w-14 h-14 bg-black rounded-xl flex items-center justify-center text-white font-bold text-2xl shadow-lg">R</div>
-                            <div>
-                                <h1 className="text-2xl font-bold tracking-tight text-zinc-900">Renovivo</h1>
-                                <p className="text-xs text-zinc-500 font-medium tracking-wide uppercase mt-0.5">Интериорни решения & Ремонти</p>
-                            </div>
+                            <img src="/renovivo_logo.png" alt="Renovivo Logo" className="h-16 w-auto object-contain" />
                         </div>
                         <div className="text-right">
                             <p className="text-[10px] text-zinc-400 uppercase tracking-wider font-semibold">Дата на оферта</p>

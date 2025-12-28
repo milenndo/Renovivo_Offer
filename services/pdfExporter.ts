@@ -1,3 +1,4 @@
+
 import { jsPDF } from "jspdf";
 import html2canvas from "html2canvas";
 import { ProjectData } from "../types";
@@ -45,13 +46,7 @@ export const generateOfferPDF = async (
   container.innerHTML = `
     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 40px;">
       <div style="display: flex; align-items: center; gap: 12px;">
-        <div style="width: 48px; height: 48px; background-color: #000; border-radius: 8px; display: flex; align-items: center; justify-content: center;">
-            <span style="color: #fff; font-weight: bold; font-size: 20px;">R</span>
-        </div>
-        <div>
-            <h1 style="font-size: 24px; font-weight: 700; margin: 0;">Renovivo</h1>
-            <p style="font-size: 12px; color: #71717a; margin: 0;">Интериорни решения & Ремонти</p>
-        </div>
+        <img src="/renovivo_logo.png" alt="Renovivo" style="height: 60px; width: auto; object-fit: contain;" />
       </div>
       <div style="text-align: right;">
         <p style="font-size: 12px; color: #a1a1aa; margin: 0;">Дата</p>
