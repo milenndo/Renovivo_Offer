@@ -1,9 +1,10 @@
+
 import React, { useState, useEffect, useMemo } from 'react';
 import { ProjectData, PropertyType, RenovationLevel, Zone, DEFAULT_ZONES, SelectedService, AnalyzedData } from '../types';
 import { SERVICES_DB } from '../services/masterData';
 import { analyzeProjectFile } from '../services/geminiService';
 import { VisualizationModal } from './VisualizationModal';
-import { Plus, Trash2, Check, MapPin, Ruler, Home, FileText, User, Search, Euro, Calendar, UploadCloud, ArrowRight, Loader2, Sparkles, Image as ImageIcon } from 'lucide-react';
+import { Plus, Trash2, Check, MapPin, Ruler, Home, FileText, User, Search, Euro, Calendar, UploadCloud, ArrowRight, Loader2, Sparkles, Image as ImageIcon, Box } from 'lucide-react';
 
 interface ProjectFormProps {
   onSubmit: (data: ProjectData) => void;
@@ -107,17 +108,50 @@ export const ProjectForm: React.FC<ProjectFormProps> = ({ onSubmit, isGenerating
   // --- HANDLERS ---
 
   const handleZoneChange = (id: string, field: keyof Zone, value: string | number) => {
-    setData(prev => ({
-      ...prev,
-      zones: prev.zones.map(z => z.id === id ? { ...z, [field]: value } : z)
-    }));
+    setData(prev => {
+      const updatedZones = prev.zones.map(z => {
+        if (z.id !== id) return z;
+
+        const updatedZone = { ...z, [field]: value };
+
+        // Auto-calculate derived areas if area or height changes
+        if (field === 'area' || field === 'height') {
+          const area = field === 'area' ? (value as number) : z.area;
+          const height = field === 'height' ? (value as number) : z.height;
+          
+          if (area > 0 && height > 0) {
+            // Logic: Perimeter ≈ 4 * sqrt(Area) (assuming square)
+            // Wall Area = Perimeter * Height
+            const perimeter = 4 * Math.sqrt(area);
+            updatedZone.wallArea = parseFloat((perimeter * height).toFixed(2));
+            updatedZone.ceilingArea = area;
+          }
+        }
+
+        return updatedZone;
+      });
+
+      return { ...prev, zones: updatedZones };
+    });
   };
 
   const addZone = () => {
     const newId = Math.random().toString(36).substr(2, 9);
+    // Default 15m2 room, 2.60m height
+    const defaultArea = 15;
+    const defaultHeight = 2.60;
+    const perimeter = 4 * Math.sqrt(defaultArea);
+    
     setData(prev => ({
       ...prev,
-      zones: [...prev.zones, { id: newId, name: 'Нова стая', area: 0 }]
+      zones: [...prev.zones, { 
+        id: newId, 
+        name: 'Нова стая', 
+        area: defaultArea,
+        height: defaultHeight,
+        ceilingArea: defaultArea,
+        wallArea: parseFloat((perimeter * defaultHeight).toFixed(2))
+      }]
     }));
   };
 
@@ -149,24 +183,32 @@ export const ProjectForm: React.FC<ProjectFormProps> = ({ onSubmit, isGenerating
 
     let initialQuantity = 1;
     
-    // --- COEFFICIENT 3.5 LOGIC ---
-    const keywords = ['шпакловка', 'боядисване', 'обшивка', 'мазилка'];
+    // --- COEFFICIENT 3.5 LOGIC & WALL LOGIC ---
     const lowerName = service.name.toLowerCase();
-    
-    // Check if the service name contains any of the target keywords
-    if (keywords.some(k => lowerName.includes(k))) {
-        if (data.totalArea > 0) {
-            // Ask the user if this applies to the whole property
-            const calculatedQty = Math.round(data.totalArea * 3.5);
-            const userConfirmed = window.confirm(
-                `За услугата "${service.name}" може да се приложи автоматично изчисление за целия имот:\n\n` +
-                `Подова площ (${data.totalArea} м²) x 3.5 = ${calculatedQty} ${service.unit}\n\n` +
-                `Желаете ли да приложим това количество? (Натиснете OK за Да, Cancel за ръчно въвеждане)`
-            );
+    const isWallService = ['боядисване', 'шпакловка', 'мазилка', 'обшивка'].some(k => lowerName.includes(k));
+    const isFloorService = ['паркет', 'гранитогрес', 'замазка', 'подова'].some(k => lowerName.includes(k));
 
-            if (userConfirmed) {
-                initialQuantity = calculatedQty;
-            }
+    if (data.totalArea > 0) {
+        let suggestedQty = 0;
+        let suggestionText = '';
+
+        if (isWallService) {
+           // Sum of all calculated wall areas
+           const totalWallArea = data.zones.reduce((sum, z) => sum + (z.wallArea || 0), 0);
+           // Fallback to coefficient if wall area is missing/zero
+           suggestedQty = Math.round(totalWallArea > 0 ? totalWallArea : data.totalArea * 3.5);
+           suggestionText = `базирано на изчислената площ на стените (~${suggestedQty} м²)`;
+        } else if (isFloorService) {
+           suggestedQty = Math.round(data.totalArea);
+           suggestionText = `базирано на подовата площ (~${suggestedQty} м²)`;
+        }
+
+        if (suggestedQty > 0) {
+             const userConfirmed = window.confirm(
+                `За услугата "${service.name}" предлагаме автоматично количество ${suggestionText}.\n\n` +
+                `Желаете ли да приложим ${suggestedQty} ${service.unit}?`
+            );
+            if (userConfirmed) initialQuantity = suggestedQty;
         }
     }
     // -----------------------------
@@ -413,47 +455,96 @@ export const ProjectForm: React.FC<ProjectFormProps> = ({ onSubmit, isGenerating
           <div className="w-5 h-5 border border-zinc-400 rounded-sm" />
           Разпределение и Зони
         </h2>
-        <div className="space-y-3">
+        <div className="space-y-4">
+          {/* Header for Desktop */}
+          <div className="hidden md:grid grid-cols-12 gap-4 text-xs font-semibold text-zinc-400 uppercase tracking-wider px-2">
+             <div className="col-span-4">Помещение</div>
+             <div className="col-span-2 text-right">Под (м²)</div>
+             <div className="col-span-2 text-right">Височина (м)</div>
+             <div className="col-span-3 pl-4">Инфо (Стени/Таван)</div>
+             <div className="col-span-1"></div>
+          </div>
+
           {data.zones.map((zone) => (
-            <div key={zone.id} className="flex gap-4 items-center group">
-              <input
-                type="text"
-                value={zone.name}
-                onChange={(e) => handleZoneChange(zone.id, 'name', e.target.value)}
-                placeholder="Име на помещение"
-                className="flex-grow bg-transparent border-b border-zinc-200 py-2 text-zinc-900 focus:outline-none focus:border-zinc-900 transition-colors placeholder-zinc-300"
-              />
-              <div className="flex items-center gap-2 w-24">
-                <input
-                  type="number"
-                  value={zone.area}
-                  onChange={(e) => handleZoneChange(zone.id, 'area', parseFloat(e.target.value))}
-                  className="w-full bg-transparent border-b border-zinc-200 py-2 text-right text-zinc-900 focus:outline-none focus:border-zinc-900 transition-colors"
-                />
-                <span className="text-zinc-400 text-sm">м²</span>
+            <div key={zone.id} className="grid grid-cols-1 md:grid-cols-12 gap-4 items-center group bg-white p-3 rounded-lg border border-transparent hover:border-zinc-100 shadow-sm md:shadow-none">
+              
+              {/* Name Input */}
+              <div className="col-span-1 md:col-span-4">
+                 <label className="md:hidden text-xs text-zinc-500 mb-1 block">Име</label>
+                 <input
+                    type="text"
+                    value={zone.name}
+                    onChange={(e) => handleZoneChange(zone.id, 'name', e.target.value)}
+                    placeholder="Име на помещение"
+                    className="w-full bg-transparent border-b border-zinc-200 py-2 text-zinc-900 focus:outline-none focus:border-zinc-900 transition-colors placeholder-zinc-300 font-medium"
+                 />
+              </div>
+
+              {/* Area Input */}
+              <div className="col-span-1 md:col-span-2 flex items-center justify-end gap-2">
+                 <div className="w-full md:w-auto">
+                    <label className="md:hidden text-xs text-zinc-500 mb-1 block">Под (м²)</label>
+                    <input
+                      type="number"
+                      value={zone.area}
+                      onChange={(e) => handleZoneChange(zone.id, 'area', parseFloat(e.target.value))}
+                      className="w-full bg-transparent border-b border-zinc-200 py-2 text-right text-zinc-900 focus:outline-none focus:border-zinc-900 transition-colors"
+                    />
+                 </div>
+                 <span className="text-zinc-400 text-sm hidden md:inline">м²</span>
+              </div>
+
+              {/* Height Input */}
+              <div className="col-span-1 md:col-span-2 flex items-center justify-end gap-2">
+                 <div className="w-full md:w-auto">
+                    <label className="md:hidden text-xs text-zinc-500 mb-1 block">Височина (м)</label>
+                    <input
+                      type="number"
+                      value={zone.height}
+                      onChange={(e) => handleZoneChange(zone.id, 'height', parseFloat(e.target.value))}
+                      className="w-full bg-transparent border-b border-zinc-200 py-2 text-right text-zinc-900 focus:outline-none focus:border-zinc-900 transition-colors"
+                      step="0.05"
+                    />
+                 </div>
+                 <span className="text-zinc-400 text-sm hidden md:inline">м</span>
+              </div>
+
+              {/* Calculated Info */}
+              <div className="col-span-1 md:col-span-3 flex flex-row md:flex-col gap-4 md:gap-0 pl-0 md:pl-4 text-xs text-zinc-500">
+                  <div className="flex items-center gap-1">
+                      <Box className="w-3 h-3" />
+                      <span>Стени: <strong>{zone.wallArea} м²</strong></span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                      <div className="w-3 h-3 border border-zinc-300 rounded-[1px]"></div>
+                      <span>Таван: <strong>{zone.ceilingArea} м²</strong></span>
+                  </div>
               </div>
               
-              {/* Visualize Button */}
-              <button
-                onClick={() => openVisModal(zone.name)}
-                className="p-2 text-zinc-300 hover:text-[#635BFF] transition-colors"
-                title="Генерирай 3D Визия"
-              >
-                <ImageIcon className="w-4 h-4" />
-              </button>
+              {/* Actions */}
+              <div className="col-span-1 md:col-span-1 flex justify-end gap-1">
+                <button
+                    onClick={() => openVisModal(zone.name)}
+                    className="p-2 text-zinc-300 hover:text-[#635BFF] transition-colors rounded-full hover:bg-indigo-50"
+                    title="Генерирай 3D Визия"
+                >
+                    <ImageIcon className="w-4 h-4" />
+                </button>
 
-              <button
-                onClick={() => removeZone(zone.id)}
-                className="p-2 text-zinc-300 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100"
-                title="Премахни"
-              >
-                <Trash2 className="w-4 h-4" />
-              </button>
+                <button
+                    onClick={() => removeZone(zone.id)}
+                    className="p-2 text-zinc-300 hover:text-red-500 transition-colors rounded-full hover:bg-red-50 opacity-100 md:opacity-0 md:group-hover:opacity-100"
+                    title="Премахни"
+                >
+                    <Trash2 className="w-4 h-4" />
+                </button>
+              </div>
             </div>
           ))}
+          
           <button
             onClick={addZone}
-            className="mt-4 flex items-center gap-2 text-sm font-medium text-zinc-500 hover:text-zinc-900 transition-colors"
+            className="mt-4 flex items-center gap-2 text-sm font-medium text-zinc-500 hover:text-zinc-900 transition-colors px-2"
           >
             <Plus className="w-4 h-4" />
             Добави помещение

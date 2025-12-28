@@ -1,3 +1,4 @@
+
 export enum PropertyType {
   APT_NEW = 'Апартамент (Ново строителство - шпакловка/замазка)',
   APT_PANEL = 'Апартамент (Панел)',
@@ -18,7 +19,10 @@ export enum RenovationLevel {
 export interface Zone {
   id: string;
   name: string;
-  area: number;
+  area: number; // Floor area
+  height: number;
+  wallArea: number;
+  ceilingArea: number;
 }
 
 export interface ClientInfo {
@@ -98,12 +102,22 @@ export interface InboxThread {
   }[];
 }
 
+// Helper for initial calculation
+const calculateZoneDetails = (area: number, height: number = 2.60) => {
+  const perimeter = 4 * Math.sqrt(area); // Assuming square shape for estimation
+  return {
+    height,
+    wallArea: parseFloat((perimeter * height).toFixed(2)),
+    ceilingArea: area
+  };
+};
+
 export const DEFAULT_ZONES: Zone[] = [
-  { id: '1', name: 'Дневна', area: 24 },
-  { id: '2', name: 'Спалня', area: 14 },
-  { id: '3', name: 'Спалня', area: 13 },
-  { id: '4', name: 'Коридор', area: 12 },
-  { id: '5', name: 'Баня', area: 5 },
-  { id: '6', name: 'WC', area: 3 },
-  { id: '7', name: 'Кухня', area: 21 },
+  { id: '1', name: 'Дневна', area: 24, ...calculateZoneDetails(24) },
+  { id: '2', name: 'Спалня', area: 14, ...calculateZoneDetails(14) },
+  { id: '3', name: 'Спалня', area: 13, ...calculateZoneDetails(13) },
+  { id: '4', name: 'Коридор', area: 12, ...calculateZoneDetails(12) },
+  { id: '5', name: 'Баня', area: 5, ...calculateZoneDetails(5) },
+  { id: '6', name: 'WC', area: 3, ...calculateZoneDetails(3) },
+  { id: '7', name: 'Кухня', area: 21, ...calculateZoneDetails(21) },
 ];

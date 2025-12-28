@@ -1,3 +1,4 @@
+
 import { GoogleGenAI, Type } from "@google/genai";
 import { ProjectData, RenovationLevel, AnalyzedData, Zone } from "../types";
 
@@ -89,13 +90,19 @@ export const generateRenovationOffer = async (data: ProjectData): Promise<string
     return `- ${s.name}: ${s.quantity} ${s.unit} x ${price.toFixed(2)} лв.`;
   }).join('\n');
 
+  const zoneDetails = data.zones.map(z => 
+    `${z.name}: ${z.area}м2 под, ${z.height}м височина (${z.wallArea}м2 стени)`
+  ).join('\n');
+
   const prompt = `
 КЛИЕНТ: ${data.client.name}
 
 ПРОЕКТ:
 Тип: ${data.type} ${data.yearOfConstruction ? `(Строителство: ${data.yearOfConstruction})` : ''}
 Площ: ${data.totalArea}м2, ${data.location}
-Зони: ${data.zones.map(z => `${z.name} (${z.area}м2)`).join(', ')}
+Зони и Детайли:
+${zoneDetails}
+
 Ниво: ${data.level}
 Инфо: ${data.notes}
 
@@ -174,13 +181,24 @@ export const analyzeProjectFile = async (file: File): Promise<AnalyzedData> => {
 
     const result = JSON.parse(response.text || '{}');
     
+    // Auto-calculate derived areas for analyzed zones
+    const zonesWithDetails = (result.zones || []).map((z: any, idx: number) => {
+        const area = z.area || 0;
+        const height = 2.60;
+        const perimeter = 4 * Math.sqrt(area);
+        return {
+            id: `auto-${idx}`,
+            name: z.name || 'Помещение',
+            area: area,
+            height: height,
+            ceilingArea: area,
+            wallArea: parseFloat((perimeter * height).toFixed(2))
+        };
+    });
+
     return {
       totalArea: result.totalArea || 0,
-      zones: (result.zones || []).map((z: any, idx: number) => ({
-        id: `auto-${idx}`,
-        name: z.name || 'Помещение',
-        area: z.area || 0
-      })),
+      zones: zonesWithDetails,
       suggestion: result.suggestion || "Данни, извлечени от изображението."
     };
 
