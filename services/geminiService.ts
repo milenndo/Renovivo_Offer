@@ -16,7 +16,7 @@ export const fileToGenerativePart = async (file: File): Promise<string> => {
   });
 };
 
-// Helper to calculate exact prices based on selected services
+// Helper to calculate estimates
 export const calculateEstimates = (data: ProjectData) => {
   const level = data.level || RenovationLevel.STANDARD;
   
@@ -123,7 +123,7 @@ ${servicesList}
   }
 };
 
-// --- NEW: ANALYZE FILE ---
+// --- ANALYZE FILE ---
 export const analyzeProjectFile = async (file: File): Promise<AnalyzedData> => {
   if (!process.env.API_KEY) throw new Error("API Key missing");
 
@@ -190,7 +190,7 @@ export const analyzeProjectFile = async (file: File): Promise<AnalyzedData> => {
   }
 };
 
-// --- NEW: GENERATE 3D VISUALIZATION ---
+// --- NEW: GENERATE 3D VISUALIZATION WITH FALLBACK ---
 export const generateRoomVisualization = async (roomName: string, style: string = "Modern Minimalist"): Promise<string> => {
   if (!process.env.API_KEY) throw new Error("API Key missing");
 
@@ -199,12 +199,13 @@ export const generateRoomVisualization = async (roomName: string, style: string 
   const prompt = `
     Photorealistic 3D architectural render of a ${roomName}.
     Style: ${style}. 
-    High quality, interior design magazine look, 4k, renovations completed.
+    High quality, interior design magazine look, renovations completed.
     Neutral colors, warm lighting.
   `;
 
   try {
-    // Using generateContent with image-preview model to get the image
+    // 1. Try Premium Model First (Gemini 3 Pro)
+    // This supports imageSize '1K' and requires a paid billing project key.
     const response = await ai.models.generateContent({
       model: 'gemini-3-pro-image-preview',
       contents: {
@@ -218,15 +219,47 @@ export const generateRoomVisualization = async (roomName: string, style: string 
       }
     });
 
-    // Extract image
     for (const part of response.candidates?.[0]?.content?.parts || []) {
       if (part.inlineData) {
         return `data:image/png;base64,${part.inlineData.data}`;
       }
     }
-    throw new Error("No image generated");
-  } catch (error) {
+  } catch (error: any) {
+    // 2. Fallback to Standard Model (Gemini 2.5 Flash) on Permission Error
+    // This model works with free tier keys. It does not support 'imageSize', so we remove it from config.
+    const isPermissionError = error.toString().includes('403') || error.message?.includes('Permission denied') || error.toString().includes('Permission denied');
+    
+    if (isPermissionError) {
+        console.warn("Gemini 3 Pro Image failed (Permission Denied). Falling back to Gemini 2.5 Flash Image.");
+        try {
+            const fallbackResponse = await ai.models.generateContent({
+                model: 'gemini-2.5-flash-image',
+                contents: {
+                    parts: [{ text: prompt }]
+                },
+                config: {
+                    imageConfig: {
+                        aspectRatio: "16:9"
+                    }
+                }
+            });
+
+            for (const part of fallbackResponse.candidates?.[0]?.content?.parts || []) {
+                if (part.inlineData) {
+                    return `data:image/png;base64,${part.inlineData.data}`;
+                }
+            }
+        } catch (fallbackError) {
+            console.error("Fallback failed:", fallbackError);
+            // Throw original error to trigger UI key selection flow which is clearer for the user
+            throw error;
+        }
+    }
+
+    // Propagate other errors (e.g. rate limit, server error)
     console.error("Vis Error:", error);
-    throw new Error("Неуспешно генериране на визуализация.");
+    throw error;
   }
+  
+  throw new Error("No image generated");
 };

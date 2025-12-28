@@ -3,7 +3,7 @@ import { ProjectData, CommunicationChannel } from '../types';
 import { generateSalesFollowUp } from '../services/agents/salesAgent';
 import { generateProjectPlan } from '../services/agents/projectManagerAgent';
 import { adaptMessage } from '../services/agents/communicationAgent';
-import { Briefcase, HardHat, MessageSquare, Copy, Sparkles, Calendar, Box, AlertTriangle, ArrowRight, CheckCircle2 } from 'lucide-react';
+import { Briefcase, HardHat, MessageSquare, Copy, Sparkles, Calendar, Box, AlertTriangle, ArrowRight, CheckCircle2, Clock, ShieldAlert } from 'lucide-react';
 
 interface AgentControlPanelProps {
   projectData: ProjectData;
@@ -65,122 +65,177 @@ export const AgentControlPanel: React.FC<AgentControlPanelProps> = ({ projectDat
   };
 
   // --- UI PARSER FOR PM PLAN ---
-  const renderFormattedOutput = (text: string) => {
-    if (!text) return <div className="text-zinc-400 text-sm italic">Изберете действие, за да генерирате съдържание...</div>;
+  const renderTable = (rows: string[], key: number) => {
+    const headerRow = rows[0];
+    const headers = headerRow.split('|').map(h => h.trim()).filter(h => h);
+    // Skip separator row (starts with | :-- or | ---)
+    const dataRows = rows.slice(2).filter(r => !r.trim().match(/^\|\s*:?-/)); 
 
-    // Split text into sections to handle tables and lists differently
+    return (
+      <div key={key} className="overflow-hidden rounded-xl border border-zinc-200 mb-8 shadow-sm bg-white ring-1 ring-black/5">
+        <div className="overflow-x-auto">
+            <table className="w-full text-sm text-left">
+            <thead className="bg-zinc-50/80 border-b border-zinc-200 text-zinc-500 uppercase font-bold text-xs tracking-wider">
+                <tr>
+                {headers.map((h, idx) => (
+                    <th key={idx} className="px-6 py-4 whitespace-nowrap">{h}</th>
+                ))}
+                </tr>
+            </thead>
+            <tbody className="divide-y divide-zinc-100">
+                {dataRows.map((row, rIdx) => {
+                const cells = row.split('|').map(c => c.trim()).filter(c => c !== '');
+                if (cells.length === 0) return null;
+                return (
+                    <tr key={rIdx} className="hover:bg-zinc-50/80 transition-colors group">
+                    {cells.map((c, cIdx) => (
+                        <td key={cIdx} className="px-6 py-4 text-zinc-700 leading-relaxed">
+                            {cIdx === 0 ? <span className="font-semibold text-zinc-900">{c}</span> : c}
+                        </td>
+                    ))}
+                    </tr>
+                );
+                })}
+            </tbody>
+            </table>
+        </div>
+      </div>
+    );
+  };
+
+  const renderFormattedOutput = (text: string) => {
+    if (!text) return (
+        <div className="flex flex-col items-center justify-center h-48 gap-4 text-zinc-400">
+            <div className="bg-zinc-50 p-4 rounded-full">
+                <Sparkles className="w-6 h-6 opacity-40"/>
+            </div>
+            <span className="text-sm font-medium opacity-60">Изберете действие, за да генерирате съдържание...</span>
+        </div>
+    );
+
     const lines = text.split('\n');
-    const renderedContent = [];
+    const renderedContent: React.ReactNode[] = [];
     let tableBuffer: string[] = [];
     let inTable = false;
+    let currentSection: 'general' | 'schedule' | 'logistics' | 'risks' = 'general';
+
+    // Helper to flush table
+    const flushTable = () => {
+        if (tableBuffer.length > 0) {
+            renderedContent.push(renderTable(tableBuffer, renderedContent.length));
+            tableBuffer = [];
+        }
+        inTable = false;
+    };
 
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i].trim();
 
-      // Table Detection
+      // Handle Table Lines
       if (line.startsWith('|')) {
         inTable = true;
         tableBuffer.push(line);
         continue;
-      } else if (inTable) {
-        // End of table, render it
-        if (tableBuffer.length > 0) {
-          renderedContent.push(renderTable(tableBuffer, i));
-          tableBuffer = [];
-        }
-        inTable = false;
+      } 
+      
+      // If we were in a table but line doesn't start with pipe, flush it
+      if (inTable) {
+        flushTable();
       }
 
-      // Headers
+      // Handle Empty Lines
+      if (!line) continue;
+
+      // Handle Headers
       if (line.startsWith('### ')) {
         const title = line.replace('### ', '').replace(/\*\*/g, '');
         let icon = <ArrowRight className="w-5 h-5 text-zinc-900" />;
-        if (title.includes('График')) icon = <Calendar className="w-5 h-5 text-blue-600" />;
-        if (title.includes('Логистика') || title.includes('Ресурси')) icon = <Box className="w-5 h-5 text-orange-600" />;
-        if (title.includes('Риск')) icon = <AlertTriangle className="w-5 h-5 text-red-600" />;
+        let sectionColor = "text-zinc-900";
+        let containerClass = "bg-zinc-100";
+        
+        if (title.toLowerCase().includes('график')) {
+            currentSection = 'schedule';
+            icon = <Calendar className="w-5 h-5 text-blue-600" />;
+            sectionColor = "text-blue-900";
+            containerClass = "bg-blue-50";
+        } else if (title.toLowerCase().includes('логистика') || title.toLowerCase().includes('ресурси')) {
+            currentSection = 'logistics';
+            icon = <Box className="w-5 h-5 text-orange-600" />;
+            sectionColor = "text-orange-900";
+            containerClass = "bg-orange-50";
+        } else if (title.toLowerCase().includes('риск')) {
+            currentSection = 'risks';
+            icon = <ShieldAlert className="w-5 h-5 text-red-600" />;
+            sectionColor = "text-red-900";
+            containerClass = "bg-red-50";
+        } else {
+            currentSection = 'general';
+        }
 
         renderedContent.push(
-          <div key={i} className="flex items-center gap-2 mt-8 mb-4 pb-2 border-b border-zinc-100">
-            {icon}
-            <h3 className="text-lg font-bold text-zinc-900">{title}</h3>
+          <div key={`header-${i}`} className="flex items-center gap-3 mt-10 mb-6 pb-2 border-b border-zinc-100">
+            <div className={`p-2 rounded-lg ${containerClass}`}>{icon}</div>
+            <h3 className={`text-lg font-bold ${sectionColor}`}>{title}</h3>
           </div>
         );
+        continue;
       }
-      // List Items (Bullet points)
-      else if (line.startsWith('* ') || line.startsWith('- ')) {
+
+      // Handle List Items
+      if (line.startsWith('* ') || line.startsWith('- ')) {
         const content = line.replace(/^[*|-] /, '');
-        const isRisk = content.includes(':'); // Heuristic for risk items "Risk: Mitigation"
         
-        if (isRisk && activeAgent === 'pm') {
-            const [risk, mitigation] = content.split(':');
+        if (currentSection === 'risks') {
+            const parts = content.split(':');
+            const riskTitle = parts[0].replace(/\*\*/g, '');
+            const riskDesc = parts.slice(1).join(':').trim();
+            
             renderedContent.push(
-                <div key={i} className="bg-red-50 border border-red-100 rounded-lg p-3 mb-2 flex gap-3 items-start">
-                    <div className="mt-1 min-w-[4px] h-4 bg-red-400 rounded-full"></div>
-                    <div>
-                        <span className="font-bold text-red-900 block text-sm">{risk.replace(/\*\*/g, '')}</span>
-                        <span className="text-red-700 text-sm">{mitigation}</span>
+                <div key={`risk-${i}`} className="group bg-white border-l-[3px] border-l-red-500 rounded-r-lg shadow-sm p-4 mb-3 hover:shadow-md transition-shadow border-t border-r border-b border-zinc-100">
+                    <div className="flex flex-col sm:flex-row sm:items-start gap-3">
+                        <div className="mt-0.5">
+                             <AlertTriangle className="w-5 h-5 text-red-500" />
+                        </div>
+                        <div>
+                            <h4 className="font-bold text-zinc-900 text-sm mb-1">
+                                {riskTitle}
+                            </h4>
+                            <p className="text-zinc-600 text-sm leading-relaxed">{riskDesc}</p>
+                        </div>
                     </div>
                 </div>
             );
+        } else if (currentSection === 'logistics') {
+             renderedContent.push(
+                <div key={`logistics-${i}`} className="flex items-start gap-3 mb-3 p-3 bg-white hover:bg-orange-50/30 rounded-lg border border-zinc-100 transition-colors shadow-sm">
+                    <div className="mt-0.5 p-1.5 bg-orange-100 text-orange-600 rounded-md">
+                        <Box className="w-4 h-4" />
+                    </div>
+                    <span className="text-zinc-700 text-sm font-medium leading-relaxed self-center" dangerouslySetInnerHTML={{ __html: content.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>') }} />
+                </div>
+            );
         } else {
-            renderedContent.push(
-            <div key={i} className="flex gap-3 mb-2 pl-1">
-                <CheckCircle2 className="w-4 h-4 text-green-500 flex-shrink-0 mt-0.5" />
-                <span className="text-zinc-700 text-sm" dangerouslySetInnerHTML={{ __html: content.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>') }} />
-            </div>
+             renderedContent.push(
+                <div key={`list-${i}`} className="flex gap-3 mb-2 pl-2 group items-start">
+                    <div className="mt-2 w-1.5 h-1.5 rounded-full bg-zinc-300 group-hover:bg-blue-500 transition-colors flex-shrink-0"></div>
+                    <span className="text-zinc-600 text-sm leading-relaxed" dangerouslySetInnerHTML={{ __html: content.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>') }} />
+                </div>
             );
         }
+        continue;
       }
+
       // Normal Text
-      else if (line.length > 0) {
+      if (line.length > 0) {
         renderedContent.push(
-          <p key={i} className="mb-2 text-zinc-600 text-sm leading-relaxed" dangerouslySetInnerHTML={{ __html: line.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>') }} />
+          <p key={`p-${i}`} className="mb-4 text-zinc-600 text-sm leading-relaxed" dangerouslySetInnerHTML={{ __html: line.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>') }} />
         );
       }
     }
 
-    // Flush remaining table if ends with table
-    if (inTable && tableBuffer.length > 0) {
-        renderedContent.push(renderTable(tableBuffer, lines.length));
-    }
+    if (inTable) flushTable();
 
-    return renderedContent;
-  };
-
-  const renderTable = (rows: string[], key: number) => {
-    // Basic markdown table parser
-    const headerRow = rows[0];
-    const headers = headerRow.split('|').map(h => h.trim()).filter(h => h);
-    const dataRows = rows.slice(2); // Skip header and separator line (|---|---|)
-
-    return (
-      <div key={key} className="overflow-x-auto rounded-lg border border-zinc-200 mb-6 shadow-sm">
-        <table className="w-full text-sm text-left">
-          <thead className="bg-zinc-50 text-zinc-500 uppercase font-medium text-xs">
-            <tr>
-              {headers.map((h, idx) => (
-                <th key={idx} className="px-4 py-3 border-b border-zinc-200">{h}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-zinc-100 bg-white">
-            {dataRows.map((row, rIdx) => {
-              const cells = row.split('|').map(c => c.trim()).filter(c => c !== '');
-              if (cells.length === 0) return null;
-              return (
-                <tr key={rIdx} className="hover:bg-zinc-50/50 transition-colors">
-                  {cells.map((c, cIdx) => (
-                    <td key={cIdx} className="px-4 py-3 text-zinc-700 font-medium">
-                        {c}
-                    </td>
-                  ))}
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-    );
+    return <div className="space-y-1">{renderedContent}</div>;
   };
 
   return (

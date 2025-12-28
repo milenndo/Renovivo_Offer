@@ -19,13 +19,12 @@ export const VisualizationModal: React.FC<VisualizationModalProps> = ({ isOpen, 
   const handleGenerate = async () => {
     setKeyError(false);
     
-    // 1. Check/Request API Key via AI Studio shim
-    // This is mandatory for gemini-3-pro-image-preview
-    if (window.aistudio) {
+    // 1. Initial Check/Request API Key via AI Studio shim
+    if ((window as any).aistudio) {
         try {
-            const hasKey = await window.aistudio.hasSelectedApiKey();
+            const hasKey = await (window as any).aistudio.hasSelectedApiKey();
             if (!hasKey) {
-                await window.aistudio.openSelectKey();
+                await (window as any).aistudio.openSelectKey();
             }
         } catch (e) {
             console.warn("AI Studio Key Check failed:", e);
@@ -34,12 +33,30 @@ export const VisualizationModal: React.FC<VisualizationModalProps> = ({ isOpen, 
 
     setIsGenerating(true);
     setImageUrl(null);
+    
     try {
       const url = await generateRoomVisualization(roomName, style);
       setImageUrl(url);
-    } catch (e) {
+    } catch (e: any) {
       console.error(e);
-      alert("Неуспешно генериране. Моля проверете дали API ключът има достъп до Gemini 3 Pro Image.");
+      
+      // 2. Retry Logic on Permission Error
+      if (e.toString().includes('Permission denied') || e.toString().includes('403') || e.message?.includes('Permission denied')) {
+          if ((window as any).aistudio) {
+              try {
+                  console.log("Permission denied detected. Retrying with key selection...");
+                  await (window as any).aistudio.openSelectKey();
+                  // Retry the generation once more
+                  const url = await generateRoomVisualization(roomName, style);
+                  setImageUrl(url);
+                  return; // Success on retry
+              } catch (retryError) {
+                  console.error("Retry failed:", retryError);
+              }
+          }
+      }
+
+      alert("Неуспешно генериране. Моля проверете дали избраният API ключ има достъп до Gemini 3 Pro Image (Paid Project).");
     } finally {
       setIsGenerating(false);
     }
